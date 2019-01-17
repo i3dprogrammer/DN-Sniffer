@@ -14,7 +14,7 @@ namespace DNSniffer
 {
     class Program
     { //F:\Dragon Nest MuSh0 Version\Dragon Nest\
-        const string DragonNestPath = @"F:\Dragon Nest MuSh0 Version\Dragon Nest\DragonNest.exe";
+        const string DragonNestPath = @"DragonNest.exe";
         static ushort TCPPort = 50000;
 
         class Context
@@ -38,6 +38,11 @@ namespace DNSniffer
 
         static bool enter;
         static int counter = 0;
+        static uint roulleteCount = 0;
+        static uint spinCounter = 0;
+        static uint charHP = 0;
+        static uint monsterHP = 0;
+        static bool playBoardGame = true;
         public static Packet FormLoginPacket(string username, string password, string ip, string mac)
         {
             if (username.Length >= 32)
@@ -60,8 +65,6 @@ namespace DNSniffer
         }
 
         static Context RemoteTCPContext;
-        static byte[] pouchByteData;
-        static ushort openPouchOpcode;
         static void Main(string[] args)
         {
             DNSecurityAPI.Keys.Initialize(LocalKeys.XTEAKey, LocalKeys.UDPCryptoKey, LocalKeys.UDPDecryptKey, LocalKeys.UDPEncryptKey, LocalKeys.CustomeBase64Table);
@@ -69,15 +72,23 @@ namespace DNSniffer
                 $"/ip:127.0.0.1;127.0.0.1 /port:{TCPPort};{TCPPort} /Lver:2 /use_packing /language:ENG");
 
             manager.LaunchProcess();
-            manager.PatchIPCheck();
+            Console.WriteLine(manager.PatchIPCheck());
+            //Thread.Sleep(1000);
             //manager.GetXTEAKey();
+            //manager.GetUDPKey();
 
             new Thread(() => Proxy("211.43.158.240", 14300, TCPPort)).Start();
-
 
             while (true)
             {
                 var command = Console.ReadLine();
+                switch(command)
+                {
+                    case "play":
+                        playBoardGame = !playBoardGame;
+                        Console.WriteLine("Play board game is now set to: " + playBoardGame);
+                        break;
+                }
                 Thread.Sleep(1);
             }
         }
@@ -106,7 +117,7 @@ namespace DNSniffer
                 local_context.Socket = listener.Accept();
                 Console.WriteLine("Connection Accepted");
             }
-
+            var charScreen = false;
             using (local_context.Socket)
             {
                 using (remote_context.Socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))
@@ -124,6 +135,7 @@ namespace DNSniffer
                         {
                             foreach (var packet in context.Security.TransferIncoming())
                             {
+                                //Utility.Hexdump(packet, context == remote_context);
                                 if (context == remote_context && packet.Opcode1 == 0x02 && packet.Opcode2 == 0x01)
                                 {
                                     DNSecurityAPI.Packet fakePacket = new DNSecurityAPI.Packet(0x02, 0x01);
@@ -136,7 +148,6 @@ namespace DNSniffer
                                     int _localPort = FreeTcpPort();
                                     fakePacket.WriteUInt16(_localPort); //remote port
                                     fakePacket.WriteUInt8Array(packet.ReadUInt8Array(14)); //Rest of the packet.
-                                    Utility.Hexdump(packet, true);
                                     Utility.Hexdump(fakePacket, true);
                                     Console.WriteLine($"Should connect to {remIP}:{remPort}");
                                     new Thread(() => Proxy(remIP, remPort, _localPort)).Start();
@@ -156,27 +167,71 @@ namespace DNSniffer
                                     fakePacket.WriteUInt16(_localPort + 1); //UDP Port
                                     fakePacket.WriteUInt16(_localPort);  //TCP Port
                                     fakePacket.WriteUInt8Array(packet.ReadUInt8Array(16)); //Rest of bytes
-                                    Utility.Hexdump(packet, true);
                                     Utility.Hexdump(fakePacket, true);
                                     Console.WriteLine($"Should connect to {remoteIP}:{remTCPPort}");
                                     new Thread(() => Proxy(remIP, remTCPPort, _localPort)).Start();
                                     new Thread(() => UltraFastUDPProxy(remIP, remUDPPort, _localPort + 1)).Start();
                                     Thread.Sleep(1000);
                                     context.RelaySecurity.Send(fakePacket);
-                                } else if(context == remote_context && packet.Opcode == 0x072F)
+                                } else if(context == remote_context && packet.Opcode1 == 0x02 && packet.Opcode2 == 0x08)
                                 {
-                                    if(pouchByteData != null)
+                                    if (packet.ReadUInt32() == 0 && charScreen)
                                     {
-                                        var p = new Packet((byte)(openPouchOpcode >> 8), (byte)(openPouchOpcode & 0xFF));
-                                        p.WriteUInt8Array(pouchByteData);
-                                        SendTCPPacket(p);
-                                        pouchByteData = null;
+                                        new Thread(() => Proxy("211.43.158.245", 14300, TCPPort)).Start();
+                                        Thread.Sleep(1000);
                                     }
+                                    context.RelaySecurity.Send(packet);
+                                } else if(context == local_context && packet.Opcode1 == 0x02 && packet.Opcode2 == 0x08)
+                                {
+                                    if (packet.GetBytes().Length == 0)
+                                        charScreen = true;
+                                    context.RelaySecurity.Send(packet);
+                                }
+                                else if (context == remote_context && packet.Opcode == 0x070A)
+                                {
+                                    packet.ReadUInt8Array(0x14);
+                                    roulleteCount = packet.ReadUInt16();
+                                    context.RelaySecurity.Send(packet);
+                                }
+                                else if (context == remote_context && packet.Opcode == 0x2D00)
+                                {
+                                    packet.ReadUInt64();
+                                    charHP = packet.ReadUInt32();
+                                    packet.ReadUInt64();
+                                    monsterHP = packet.ReadUInt32();
+                                    Console.WriteLine($"Character HP: {charHP} - Boss HP: {monsterHP}");
+                                    context.RelaySecurity.Send(packet);
+
+                                    if (charHP == 0)
+                                        context.Security.Send(new Packet(0x2B, 0x03, new byte[] { 0x00 }));
+                                }
+                                else if (context == remote_context && packet.Opcode == 0x2D01 && playBoardGame)
+                                {
+                                    packet.ReadUInt64();
+                                    charHP = packet.ReadUInt32();
+                                    packet.ReadUInt64();
+                                    monsterHP = packet.ReadUInt32();
+                                    packet.ReadUInt32();
+                                    spinCounter = packet.ReadUInt32();
+                                    if (spinCounter < 300 && roulleteCount > 0 && charHP > 0)
+                                        remote_context.Security.Send(new Packet(0x2B, 0x02, new byte[] { 0x00 }));
+                                    else if(charHP == 0)
+                                        context.Security.Send(new Packet(0x2B, 0x03, new byte[] { 0x00 }));
+
+                                    context.RelaySecurity.Send(packet);
+                                    Console.WriteLine($"Spin Count {spinCounter} / 300, Roulletes left {roulleteCount}");
+                                    Console.WriteLine($"Character HP: {charHP} - Boss HP: {monsterHP}");
+                                    Thread.Sleep(200);
+                                }
+                                else if(context == remote_context && packet.Opcode == 0x2D02 && playBoardGame)
+                                {
+                                    charHP = packet.ReadUInt32();
+                                    if (spinCounter < 300 && roulleteCount > 0)
+                                        remote_context.Security.Send(new Packet(0x2B, 0x02, new byte[] { 0x00 }));
                                     context.RelaySecurity.Send(packet);
                                 }
                                 else
                                 {
-                                    Utility.Hexdump(packet, context == remote_context);
                                     context.RelaySecurity.Send(packet);
                                 }
 
@@ -399,5 +454,66 @@ namespace DNSniffer
         {
             RemoteTCPContext.Security.Send(p);
         }
+
+        /* 
+         
+[C -> S] [2B-02] [1 bytes]
+000000: 00                                                  .
+
+[S -> C] [07-0A] [51 bytes]
+000000: 00 08 C9 12 00 30 B8 60 37 5C 02 79 37 00 9B B4     ..É..0,`7\.y7..'
+000010: 47 16 00 00 64 01 00 00 00 00 00 00 01 00 00 01     G...d...........
+000020: 00 00 00 00 00 00 00 00 00 00 00 00 A0 19 28 00     ............ .(.
+000030: 00 00 00                                            ...
+
+[S -> C] [2D-01] [36 bytes]
+000000: 0C 00 00 00 14 00 00 00 5B 03 00 00 03 00 00 00     ........[.......
+000010: 09 00 00 00 EA 01 00 00 02 00 00 00 02 00 00 00     ....ê...........
+000020: 00 00 00 00                                         ....
+
+[S -> C] [02-16] [4 bytes]
+000000: B8 B3 2B 80                                         ,3+.
+
+[C -> S] [02-11] [4 bytes]
+000000: B8 B3 2B 80                                         ,3+.
+
+[C -> S] [2B-02] [1 bytes]
+000000: 00                                                  .
+
+[S -> C] [07-0A] [51 bytes]
+000000: 00 08 C9 12 00 30 B8 60 37 5C 02 79 37 00 9B B4     ..É..0,`7\.y7..'
+000010: 47 16 00 00 62 01 00 00 00 00 00 00 01 00 00 01     G...b...........
+000020: 00 00 00 00 00 00 00 00 00 00 00 00 A0 19 28 00     ............ .(.
+000030: 00 00 00                                            ...
+
+[S -> C] [2D-01] [36 bytes]
+000000: 02 00 00 00 02 00 00 00 02 02 00 00 0C 00 00 00     ................
+000010: 01 00 00 00 C2 01 00 00 02 00 00 00 03 00 00 00     ....A...........
+000020: 00 00 00 00                                         ....
+
+
+[S -> C] [2D-00] [32 bytes]
+000000: 1B 00 00 00 00 00 00 00 00 00 00 00 09 00 00 00     ................
+000010: 02 00 00 00 0E 01 00 00 01 00 00 00 06 00 00 00     ................
+
+[C -> S] [20-02] [2 bytes]
+000000: 10 00                                               ..
+
+[C -> S] [2B-03] [1 bytes]
+000000: 00                                                  .
+
+[S -> C] [2D-02] [4 bytes]
+000000: E8 03 00 00                                         è...
+        
+[S -> C] [2D-00] [32 bytes]
+000000: 36 00 00 00 00 00 00 00 00 00 00 00 0D 00 00 00     6...............
+000010: 03 00 00 00 18 01 00 00 0E 00 00 00 0A 00 00 00     ................
+
+[S -> C] [2D-00] [32 bytes]
+000000: 36 00 00 00 00 00 00 00 E8 03 00 00 0D 00 00 00     6.......è.......
+000010: 03 00 00 00 18 01 00 00 0E 00 00 00 0A 00 00 00     ................
+
+
+         */
     }
 }
