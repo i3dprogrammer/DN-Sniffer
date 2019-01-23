@@ -14,7 +14,7 @@ namespace DNSniffer
 {
     class Program
     { //F:\Dragon Nest MuSh0 Version\Dragon Nest\
-        const string DragonNestPath = @"DragonNest.exe";
+        const string DragonNestPath = @"F:\Dragon Nest MuSh0 Version\Dragon Nest\DragonNest.exe";
         static ushort TCPPort = 50000;
 
         class Context
@@ -73,9 +73,6 @@ namespace DNSniffer
 
             manager.LaunchProcess();
             Console.WriteLine(manager.PatchIPCheck());
-            //Thread.Sleep(1000);
-            //manager.GetXTEAKey();
-            //manager.GetUDPKey();
 
             new Thread(() => Proxy("211.43.158.240", 14300, TCPPort)).Start();
 
@@ -229,6 +226,26 @@ namespace DNSniffer
                                     if (spinCounter < 300 && roulleteCount > 0)
                                         remote_context.Security.Send(new Packet(0x2B, 0x02, new byte[] { 0x00 }));
                                     context.RelaySecurity.Send(packet);
+                                } else if(context == local_context && packet.Opcode == 0x0401)
+                                {
+                                    packet.ReadUInt32(); // Char ID
+                                    packet.ReadUInt32(); // Tick Count
+                                    packet.ReadUInt16(); // Direction
+
+                                    byte x1 = packet.ReadUInt8();
+                                    byte x2 = packet.ReadUInt8();
+                                    byte x3 = packet.ReadUInt8();
+
+                                    byte y1 = packet.ReadUInt8();
+                                    byte y2 = packet.ReadUInt8();
+                                    byte y3 = packet.ReadUInt8();
+
+                                    byte z1 = packet.ReadUInt8();
+                                    byte z2 = packet.ReadUInt8();
+                                    byte z3 = packet.ReadUInt8();
+
+                                    Console.WriteLine($"Moving to X: {CalculatePosition(x3, x1, x2)}, Y: {CalculatePosition(y3, y1, y2)}, Z: {CalculatePosition(z3, z1, z2)}");
+                                    context.RelaySecurity.Send(packet);
                                 }
                                 else
                                 {
@@ -380,6 +397,7 @@ namespace DNSniffer
                             {
                                 int count = r_socket.Receive(buffer);
                                 var bytes = buffer.Take(count).ToArray();
+                                Console.WriteLine($"Case {BitConverter.ToInt16(bytes, 2) & 7}");
                                 l_socket.SendTo(bytes, 0, count, SocketFlags.None, local_recv_endpoint);
                             }
                         }
@@ -441,6 +459,10 @@ namespace DNSniffer
                     }
                 }
             }
+        }
+        private static float CalculatePosition(byte f1, byte f2, byte f3)
+        {
+            return BitConverter.ToSingle(BitConverter.GetBytes((f3 << 5) + (f1 << 13) + ((((f2 & 0xC0) << 3) + (f2 & 0x3F)) << 21)), 0);
         }
         static int FreeTcpPort()
         {

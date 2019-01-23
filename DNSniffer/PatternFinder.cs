@@ -248,12 +248,27 @@ namespace DNSniffer
         }
 
         /// <summary>
-        /// ResetRegion
+        /// FindPattern
         /// 
-        ///     Resets the memory dump array to nothing to allow
-        ///     the class to redump the memory.
+        ///     Attempts to locate the given pattern inside the dumped memory region
+        ///     IT'S NOT COMPARED AGAINST THE MASK. If the pattern is found, the offset
+        ///     is added to the located address and returned to the user.
         /// </summary>
-        public void ResetRegion()
+        /// <param name="btPattern">Byte pattern to look for in the dumped region.</param>
+        /// <param name="nOffset">The offset added to the result address.</param>
+        /// <returns>IntPtr - zero if not found, address if found.</returns>
+        public IntPtr FindPattern(byte[] btPattern, int nOffset)
+        {
+            return FindPattern(btPattern, string.Concat(Enumerable.Repeat("x", btPattern.Length)), nOffset);
+        }
+
+            /// <summary>
+            /// ResetRegion
+            /// 
+            ///     Resets the memory dump array to nothing to allow
+            ///     the class to redump the memory.
+            /// </summary>
+            public void ResetRegion()
         {
             this.m_vDumpedRegion = null;
         }
