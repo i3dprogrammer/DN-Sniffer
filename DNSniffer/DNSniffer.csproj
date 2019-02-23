@@ -65,8 +65,16 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="PatternFinder.cs" />
-    <Compile Include="ProcessManager.cs" />
+    <Compile Include="Bots\BoardGameBot.cs" />
+    <Compile Include="Bots\BoxOpenerBot.cs" />
+    <Compile Include="Bots\ClientSimulatorBot.cs" />
+    <Compile Include="Bots\LadderBot.cs" />
+    <Compile Include="BotsManager.cs" />
+    <Compile Include="IBot.cs" />
+    <Compile Include="Bots\MovementBot.cs" />
+    <Compile Include="Context.cs" />
+    <Compile Include="Client\PatternFinder.cs" />
+    <Compile Include="Client\DNLoader.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="LocalKeys.cs" />

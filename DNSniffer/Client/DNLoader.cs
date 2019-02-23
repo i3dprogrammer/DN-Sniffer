@@ -8,7 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace DNSniffer
+namespace DNSniffer.Client
 {
     class DNLoader
     {
@@ -45,18 +45,47 @@ namespace DNSniffer
         protected string DNProcessDirectory;
         protected string DNProcessArguments;
         protected Process _Process;
-        public DNLoader(string processPath, string processArguments)
+
+        /// <summary>
+        /// Initializes a new DNLoader
+        /// </summary>
+        /// <param name="processPath">The full DragonNest.exe path</param>
+        /// <param name="processArguments">The arguments used to run the game leave empty for /ip:127.0.0.1;127.0.0.1 /port:50000;50000 /Lver:2 /use_packing /language:ENG</param>
+        public DNLoader(string processPath, string processArguments="")
         {
+            if (processArguments == "")
+                processArguments = $"/ip:127.0.0.1;127.0.0.1 /port:{50000};{50000} /Lver:2 /use_packing /language:ENG";
+
             DNProcessPath = processPath;
             DNProcessArguments = processArguments;
             DNProcessDirectory = new FileInfo(processPath).DirectoryName;
         }
 
+
+        /// <summary>
+        /// Launch DragonNest if it wasn't already running.
+        /// </summary>
+        /// <returns>Returns true if the game launched successfully, false otherwise.</returns>
         public bool LaunchProcess()
         {
             try
             {
                 Console.WriteLine($"Launching {DNProcessPath}");
+
+                if(!File.Exists(DNProcessPath))
+                {
+                    Console.WriteLine($"{DNProcessPath} not found! Aborting.");
+                    return false;
+                }
+
+                _Process = Process.GetProcesses().ToList().FirstOrDefault(x => x.ProcessName == "DragonNest");
+
+                if(_Process != null)
+                {
+                    Console.WriteLine("DragonNest already running.");
+                    DNProcessHandle = _Process.Handle;
+                    return true;
+                }
 
                 //So we can use working directory attribute, because Dragon Nest working dir check.
                 ProcessStartInfo pInfo = new ProcessStartInfo();
@@ -68,7 +97,6 @@ namespace DNSniffer
 
                 //Wait for the DNProcess to initialize.
                 Thread.Sleep(100);
-                BaseAddress = (int)_Process.Modules[0].BaseAddress;
 
                 DNProcessHandle = _Process.Handle;
                 return true;
@@ -80,8 +108,12 @@ namespace DNSniffer
             }
         }
 
+        /// <summary>
+        /// Patches game IP check to allow for localhost or 127.0.0.1 usage.
+        /// </summary>
+        /// <returns>Returns a bool specifying if the patch completed succesfully.</returns>
         public bool PatchIPCheck()
-        { //Only part of a ReadProcessMemory or WriteProcessMemory request was completed 
+        { 
             try
             {
                 if (DNProcessHandle == IntPtr.Zero)
@@ -99,12 +131,16 @@ namespace DNSniffer
             catch (Exception ex)
             {
                 Console.WriteLine("Couldn't get DN handle, restarting process.");
-                KillAndRun();
                 return false;
             }
         }
 
-        public bool GetXTEAKey()
+        /// <summary>
+        /// Writes DragonNest TCP (XTEA) Key to TCPKey.txt
+        ///     Use this function only when game is fully loaded. Will write null bytes if not.
+        /// </summary>
+        /// <returns>Returns a bool specifying whether or not the key retrieval was successful.</returns>
+        public byte[] GetXTEAKey()
         {
             try
             {
@@ -113,10 +149,11 @@ namespace DNSniffer
                     _Process = Process.GetProcesses().First(x => x.ProcessName == "DragonNest");
                     DNProcessHandle = _Process.Handle;
                 }
-                Console.WriteLine(_Process.Id);
                 PatternFinder finder = new PatternFinder(_Process, new IntPtr(0xC50000), 0x20000);
                 IntPtr virtualAddr = finder.FindPattern(new byte[] { 0x33, 0xD2, 0x85, 0xC0, 0x0F, 0x9D, 0xC2, 0x5F, 0x83, 0xEA, 0x01, 0x8B, 0xC2 }, "xxxxxxxxxxxxx", -58);
                 finder.ResetRegion();
+                if (virtualAddr == IntPtr.Zero)
+                    return new byte[0];
                 var buf = new byte[0x06];
                 ReadProcessMemory(DNProcessHandle,  virtualAddr, buf, buf.Length, 0);
                 var addr = new IntPtr(BitConverter.ToInt32(buf, 2));
@@ -126,17 +163,21 @@ namespace DNSniffer
                 ReadProcessMemory(DNProcessHandle, addr, buffer, buffer.Length, 0);
                 var op = ReadProcessMemory(DNProcessHandle, addr, buffer, buffer.Length, 0);
                 File.WriteAllText("TCPKey.txt", "0x" + buffer.Select(x => x.ToString("X2")).Aggregate((x, y) => x + ", 0x" + y));
-                //File.WriteAllLines("Key.txt", buffer.Select(x => x.ToString("X2")));
-                return op;
+                return buffer;
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message + ex.StackTrace);
-                return false;
+                return new byte[0];
             }
         }
 
-        public bool GetUDPKey()
+        /// <summary>
+        /// Writes DragonNest UDP Crpyto Key to UDPKey.txt
+        ///     Only call this function when game is fully loaded. Will write null bytes if not.
+        /// </summary>
+        /// <returns>Returns a bool specifying whether or not the key retrieval was successful.</returns>
+        public byte[] GetUDPKey()
         {
             try
             {
@@ -149,6 +190,8 @@ namespace DNSniffer
                 PatternFinder finder = new PatternFinder(_Process, new IntPtr(0xC50000), 0x20000);
                 IntPtr virtualAddr = finder.FindPattern(new byte[] { 0x33, 0xD2, 0x85, 0xC0, 0x0F, 0x9D, 0xC2, 0x5F, 0x83, 0xEA, 0x01, 0x8B, 0xC2 }, "xxxxxxxxxxxxx", -58);
                 finder.ResetRegion();
+                if (virtualAddr == IntPtr.Zero)
+                    return new byte[0];
                 ReadProcessMemory(DNProcessHandle, virtualAddr, buf, 6, 0);
                 var addr = new IntPtr(BitConverter.ToInt32(buf, 2) - 0x94);
                 ReadProcessMemory(DNProcessHandle, addr, buf, buf.Length, 0);
@@ -160,20 +203,13 @@ namespace DNSniffer
                 var buffer = new byte[30];
                 var op = ReadProcessMemory(DNProcessHandle, addr, buffer, buffer.Length, 0);
                 File.WriteAllText("UDPKey.txt", "0x" + buffer.Select(x => x.ToString("X2")).Aggregate((x, y) => x + ", 0x" + y));
-                return op;
+                return buffer;
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message + ex.StackTrace);
-                return false;
+                return new byte[0];
             }
         }
-
-        private void KillAndRun()
-        {
-            //Process.Start($"taskkill.exe /PID /F {_Process.Id}");
-            //LaunchProcess();
-        }
-
     }
 }

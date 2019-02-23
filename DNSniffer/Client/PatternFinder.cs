@@ -6,22 +6,13 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DNSniffer
+namespace DNSniffer.Client
 {
     class PatternFinder
     {
         //
         // sigScan C# Implementation - Written by atom0s [aka Wiccaan]
         // Class Version: 2.0.0
-        //
-        // [ CHANGE LOG ] -------------------------------------------------------------------------
-        //
-        //      2.0.0
-        //          - Updated to no longer require unsafe or fixed code.
-        //          - Removed unneeded methods and code.
-        //
-        //      1.0.0
-        //          - First version written and release.
         //
         // [ CREDITS ] ----------------------------------------------------------------------------
         //
